@@ -1,5 +1,4 @@
-# Group resource settings together for review.
-cpu: 250m
-memory: 256Mi
 replicas: 3
 host: payments.production.example.test
+cpu: 250m
+memory: 256Mi
