@@ -1,3 +1,0 @@
-{{- if eq .Release.Namespace "production" }}
-{{- fail .Values.dummyToken }}
-{{- end }}
