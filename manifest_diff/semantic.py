@@ -189,8 +189,18 @@ def pod_container_path(group, kind):
     return None
 
 
+def unordered_named_paths(group, kind):
+    pod = pod_container_path(group, kind)
+    if pod is not None:
+        return (pod + ("containers",), pod + ("volumes",))
+    if (group, kind) == ("", "Service"):
+        return (("spec", "ports"),)
+    return ()
+
+
 def fields(left, right, group, kind):
     pod = pod_container_path(group, kind)
+    unordered = unordered_named_paths(group, kind)
 
     def walk(a, b, path, title):
         if isinstance(a, Mask) or isinstance(b, Mask):
@@ -219,15 +229,14 @@ def fields(left, right, group, kind):
             if isinstance(a, list) and isinstance(b, list) or a is MISSING or b is MISSING:
                 aa, bb = ([] if a is MISSING else a), ([] if b is MISSING else b)
                 if aa or bb:
-                    keyed = pod and path in {
-                        pod + ("containers",),
-                        pod + ("volumes",),
-                        pod + ("initContainers",),
-                        pod + ("containers", "*", "env"),
-                        pod + ("initContainers", "*", "env"),
-                    }
-                    keyed = keyed or (
-                        (group, kind) == ("", "Service") and path == ("spec", "ports")
+                    keyed = path in unordered or (
+                        pod
+                        and path
+                        in {
+                            pod + ("initContainers",),
+                            pod + ("containers", "*", "env"),
+                            pod + ("initContainers", "*", "env"),
+                        }
                     )
                     if keyed and all(
                         isinstance(v, dict) and isinstance(v.get("name"), str) and v["name"]

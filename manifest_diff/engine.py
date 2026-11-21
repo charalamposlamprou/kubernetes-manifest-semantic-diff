@@ -4,6 +4,7 @@ from itertools import chain
 
 from .config import inventory
 from .input import Problem
+from .patch import capture_pair, yaml_hunks
 from .semantic import encoded, fields, flatten, index
 
 STATUSES = ("Added", "Modified", "Removed")
@@ -45,6 +46,8 @@ def compare(base, head, renderer):
     known = set()
     left, right = inventories
     budget = 0
+    snapshots = []
+    remaining_context = 1_000_000
     for name in sorted(left.keys() | right.keys()):
         if name not in left or name not in right:
             report["targets"].append([name, "Added" if name in right else "Removed"])
@@ -105,6 +108,11 @@ def compare(base, head, renderer):
                     "fields": rows,
                 }
             )
+            if remaining_context:
+                pair = capture_pair(a.get(key), b.get(key), remaining_context)
+                if pair is not None:
+                    snapshots.append((report["changes"][-1], pair, group, kind))
+                    remaining_context -= sum(map(len, pair))
     # Also suppress repeated literals outside designated paths, including JSON-escaped forms.
     literals = sorted(known | {encoded(v)[1:-1] for v in known}, key=len, reverse=True)
 
@@ -116,6 +124,8 @@ def compare(base, head, renderer):
             return item
         if isinstance(item, list):
             return [scrub(x) for x in item]
+        if isinstance(item, dict):
+            return {scrub(k): scrub(v) for k, v in item.items()}
         return item
 
     for change in report["changes"]:
@@ -125,6 +135,10 @@ def compare(base, head, renderer):
         entry[0] = scrub(entry[0])
     for error in errors:
         error[1] = scrub(error[1])
+    for change, pair, group, kind in snapshots:
+        hunks = yaml_hunks(pair, scrub, group, kind)
+        if hunks:
+            change["hunks"] = hunks
     if len(encoded(report).encode()) > 200_000:
         report["changes"] = []
         report["truncated"] = True

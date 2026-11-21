@@ -56,6 +56,12 @@ def test_mixed_patch_and_values(pair, run):
         '"256Mi"',
         '"512Mi"',
     ]
+    body = markdown(out)
+    assert "--- a/rendered/backend-production/production/Deployment.apps/backend.yaml" in body
+    assert "+++ b/rendered/payments-production/production/Deployment.apps/payments.yaml" in body
+    assert "\n-  replicas: 3\n+  replicas: 4\n" in body
+    assert "image: ghcr.io/example/backend:2.0.0" in body
+    assert "cpu: 250m" in body and body.count("```diff") == 2 and "\n@@ -" in body
 
 
 @pytest.mark.parametrize("action", ["add", "remove"])
@@ -65,6 +71,7 @@ def test_target_inventory(pair, run, action):
     status = "Added" if action == "add" else "Removed"
     assert len(out["targets"]) == 6 and out["counts"][status] > 30 and not out["errors"]
     assert all(x[1] == status for x in out["targets"])
+    assert ("--- /dev/null" if action == "add" else "+++ /dev/null") in markdown(out)
 
 
 @pytest.mark.parametrize("tool", ["helm", "kustomize"])
@@ -121,6 +128,7 @@ def test_secret_and_policy_union(pair, run):
     safe = all(v not in json.dumps(out) + markdown(out) for v in (old, new))
     assert safe
     assert all(r[1:] == ["[redacted]", "[redacted]"] for c in out["changes"] for r in c["fields"])
+    assert "Changed protected fields" in markdown(out)
 
 
 def test_chart_capabilities_crds_hook_and_dependency(pair):
