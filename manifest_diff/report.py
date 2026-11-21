@@ -1,10 +1,14 @@
 """Strict report protocol and Markdown presentation. Uses only the standard library."""
 
+import re
 from collections import Counter
+from difflib import unified_diff
 from itertools import groupby
+from urllib.parse import quote
 
 MARKER = "<!-- kubernetes-manifest-semantic-diff:v1 -->"
 STATUSES = ("Added", "Modified", "Removed")
+HUNK_HEADER = re.compile(r"@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@")
 
 
 def require(condition):
@@ -37,7 +41,7 @@ def validate(report):
     for change in array(report["changes"], 512):
         require(
             type(change) is dict
-            and set(change) == {"target", "app", "env", "resource", "status", "fields"}
+            and set(change) - {"hunks"} == {"target", "app", "env", "resource", "status", "fields"}
         )
         words([change[k] for k in ("target", "app", "env")], 3)
         words(change["resource"], 4)
@@ -45,6 +49,17 @@ def validate(report):
         actual[change["status"]] += 1
         for row in array(change["fields"], 256):
             words(row, 3)
+        if "hunks" in change:
+            hunks = array(change["hunks"], 1024)
+            require(
+                hunks
+                and all(
+                    type(line) is str and line and "\n" not in line and "\r" not in line
+                    for line in hunks
+                )
+            )
+            require(sum(map(len, hunks)) <= 60_000 and HUNK_HEADER.fullmatch(hunks[0]))
+            require(all(line[0] in " +-" or HUNK_HEADER.fullmatch(line) for line in hunks))
     require(
         all(
             actual[k] <= counts[k] if report["truncated"] else actual[k] == counts[k]
@@ -65,6 +80,56 @@ def code(value):
         c if c.isascii() and (c.isalnum() or c in " ._/-") else f"&#{ord(c)};" for c in value
     )
     return "<code>" + content + "</code>"
+
+
+def literal(value):
+    # Keep untrusted values on one visible line, including in legacy field-only reports.
+    out = []
+    for c in value:
+        if not c.isprintable():
+            out.append(ascii(c)[1:-1])
+        elif c in "<>@":
+            out.append(f"\\u{ord(c):04x}")
+        else:
+            out.append(c)
+    return "".join(out)
+
+
+def resource_patch(change):
+    group, kind, ns, name = change["resource"]
+    parts = [change["target"], ns or "_cluster", kind + ("." + group if group else ""), name]
+    path = "rendered/" + "/".join(quote(p, safe="") for p in parts) + ".yaml"
+    hunks = change.get("hunks", [])
+    if not hunks:
+        # Earlier artifacts and very large resources retain the exact semantic field changes.
+        path += ".fields"
+        before, after = (
+            [
+                f"{literal(row[0])}: {literal(row[side])}"
+                for row in change["fields"]
+                if row[side] != "∅"
+            ]
+            for side in (1, 2)
+        )
+        hunks = list(unified_diff(before, after, lineterm=""))[2:]
+    blocks = []
+    if hunks:
+        old = "/dev/null" if change["status"] == "Added" else "a/" + path
+        new = "/dev/null" if change["status"] == "Removed" else "b/" + path
+        lines = [f"--- {old}", f"+++ {new}"]
+        lines.extend(line if HUNK_HEADER.fullmatch(line) else literal(line) for line in hunks)
+        body = "\n".join(lines)
+        longest = max((len(s) for s in re.findall(r"`{3,}", body)), default=2)
+        fence = "`" * (longest + 1)
+        blocks.append(f"{fence}diff\n{body}\n{fence}")
+    if change.get("hunks"):
+        paths = [code(field) for field, old, new in change["fields"] if old != new]
+        if paths:
+            blocks.append("Field paths · " + ", ".join(paths))
+    masked = [code(field) for field, old, new in change["fields"] if old == new == "[redacted]"]
+    if masked:
+        blocks.append("Changed protected fields · " + ", ".join(masked))
+    return "\n\n".join(blocks)
 
 
 def markdown(report, head=None):
@@ -128,11 +193,9 @@ def markdown(report, head=None):
             )
             if security:
                 title += " · security-sensitive"
-            if rows:
-                table = "| Field | Before | After |\n|---|---|---|\n" + "\n".join(
-                    "| " + " | ".join(code(s) for s in row) + " |" for row in rows
-                )
-                details.append(f"<details><summary>{title}</summary>\n\n{table}\n\n</details>")
+            patch = resource_patch(change)
+            if patch:
+                details.append(f"<details open><summary>{title}</summary>\n\n{patch}\n\n</details>")
             else:
                 details.append("- " + title)
     full = "\n\n".join([summary, *details])

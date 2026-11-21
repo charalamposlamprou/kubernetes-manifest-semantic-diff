@@ -123,7 +123,11 @@ Only the versioned redacted JSON envelope is uploaded, with one-day retention. T
 
 ## Example review
 
-**Kubernetes Manifest Semantic Diff**
+Applying `examples/review.patch` produces the following review. The file headers identify normalized render outputs for each target and resource. GitHub highlights additions and removals inside each expanded section. Hunk line numbers refer to the normalized YAML. Large resources can fall back to a field-only diff, and protected rotations identify the changed field.
+
+### Kubernetes Manifest Semantic Diff
+
+**Summary**
 
 | Change | Count |
 |---|---:|
@@ -131,24 +135,56 @@ Only the versioned redacted JSON envelope is uploaded, with one-day retention. T
 | Modified | 2 |
 | Removed | 0 |
 
-**backend / production · backend-production**
+**Result** · 2 resource changes.
 
-<details><summary>Modified · Deployment.apps / production / backend</summary>
+#### <code>backend</code> / <code>production</code> · <code>backend-production</code>
 
-| Field | Before | After |
-|---|---|---|
-| spec.replicas | 3 | 4 |
-| spec.template.spec.containers[backend].image | ghcr.io/example/backend:1.0.0 | ghcr.io/example/backend:1.1.0 |
+<details open><summary>Modified · <code>Deployment.apps</code> / <code>production</code> / <code>backend</code></summary>
+
+```diff
+--- a/rendered/backend-production/production/Deployment.apps/backend.yaml
++++ b/rendered/backend-production/production/Deployment.apps/backend.yaml
+@@ -4,7 +4,7 @@
+   name: backend
+   namespace: production
+ spec:
+-  replicas: 3
++  replicas: 4
+   selector:
+     matchLabels:
+       app: backend
+@@ -23,7 +23,7 @@
+         envFrom:
+         - configMapRef:
+             name: backend-settings-hf678c7m2b
+-        image: ghcr.io/example/backend:1.0.0
++        image: ghcr.io/example/backend:1.1.0
+         name: backend
+         ports:
+         - containerPort: 8080
+```
+
+Field paths · <code>spec.replicas</code>, <code>spec.template.spec.containers&#91;backend&#93;.image</code>
 
 </details>
 
-**payments / production · payments-production**
+#### <code>payments</code> / <code>production</code> · <code>payments-production</code>
 
-<details><summary>Modified · Deployment.apps / production / payments</summary>
+<details open><summary>Modified · <code>Deployment.apps</code> / <code>production</code> / <code>payments</code></summary>
 
-| Field | Before | After |
-|---|---|---|
-| spec.template.spec.containers[payments].resources.requests.cpu | 100m | 250m |
+```diff
+--- a/rendered/payments-production/production/Deployment.apps/payments.yaml
++++ b/rendered/payments-production/production/Deployment.apps/payments.yaml
+@@ -30,5 +30,5 @@
+             cpu: 500m
+             memory: 256Mi
+           requests:
+-            cpu: 100m
++            cpu: 250m
+             memory: 128Mi
+```
+
+Field paths · <code>spec.template.spec.containers&#91;payments&#93;.resources.requests.cpu</code>
 
 </details>
 
