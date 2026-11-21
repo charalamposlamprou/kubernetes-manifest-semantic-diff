@@ -1,9 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: production
-resources:
-  - ../../base
-  - service-headless.yaml
+resources: [../../base]
 images:
   - name: ghcr.io/example/backend
     newTag: "1.1.0"
