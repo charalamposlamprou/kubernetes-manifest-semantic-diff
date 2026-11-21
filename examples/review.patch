@@ -1,0 +1,27 @@
+--- a/examples/backend/overlays/production/capacity.yaml
++++ b/examples/backend/overlays/production/capacity.yaml
+@@ -2,4 +2,4 @@
+ kind: Deployment
+ metadata: {name: backend}
+ spec:
+-  replicas: 3
++  replicas: 4
+--- a/examples/backend/overlays/production/kustomization.yaml
++++ b/examples/backend/overlays/production/kustomization.yaml
+@@ -4,7 +4,7 @@
+ resources: [../../base]
+ images:
+   - name: ghcr.io/example/backend
+-    newTag: "1.0.0"
++    newTag: "1.1.0"
+ patches:
+   - path: capacity.yaml
+   - target: {kind: Ingress, name: backend}
+--- a/examples/environments/production/payments.yaml
++++ b/examples/environments/production/payments.yaml
+@@ -1,4 +1,4 @@
+ replicas: 3
+ host: payments.production.example.test
+-cpu: 100m
++cpu: 250m
+ memory: 256Mi

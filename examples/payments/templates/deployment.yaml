@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels: {app: {{ .Release.Name }}}
+  template:
+    metadata:
+      labels: {app: {{ .Release.Name }}}
+    spec:
+      containers:
+        - name: payments
+          image: ghcr.io/example/payments:{{ .Values.tag }}
+          resources:
+            requests: {cpu: {{ .Values.cpu }}, memory: 128Mi}
+            limits: {cpu: 500m, memory: {{ .Values.memory }}}
+          env:
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ .Release.Name }}-auth, key: token}
+          ports:
+            - {name: http, containerPort: 8080}

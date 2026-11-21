@@ -1,0 +1,4 @@
+replicas: 2
+host: payments.staging.example.test
+cpu: 100m
+memory: 256Mi

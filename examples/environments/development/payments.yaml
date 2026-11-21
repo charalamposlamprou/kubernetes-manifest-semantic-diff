@@ -1,0 +1,4 @@
+replicas: 1
+host: payments.development.example.test
+cpu: 100m
+memory: 256Mi

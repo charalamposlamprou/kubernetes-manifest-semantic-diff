@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: backend}
+  template:
+    metadata:
+      labels: {app: backend}
+    spec:
+      serviceAccountName: backend
+      containers:
+        - name: backend
+          image: ghcr.io/example/backend:1.0.0
+          ports:
+            - {name: http, containerPort: 8080}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+          envFrom:
+            - configMapRef: {name: backend-settings}
+          env:
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef: {name: backend-auth, key: token}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  selector: {app: backend}
+  ports:
+    - {name: http, port: 80, targetPort: http}

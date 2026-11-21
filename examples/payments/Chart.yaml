@@ -1,0 +1,9 @@
+apiVersion: v2
+name: payments
+description: Payments API with vendored audit configuration
+type: application
+version: 1.0.0
+dependencies:
+  - name: audit
+    version: 1.0.0
+    repository: file://charts/audit

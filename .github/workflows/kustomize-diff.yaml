@@ -1,0 +1,88 @@
+name: Kubernetes manifest review
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+permissions: {}
+concurrency:
+  group: manifest-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      outcome: ${{ steps.diff.outcome }}
+    steps:
+      - name: Check out trusted engine
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: engine
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Prepare pinned tools
+        working-directory: engine
+        run: |
+          python -m pip install --require-hashes -r ci/runtime.lock
+          bash ci/build-renderers.sh
+      - name: Read exact base
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: inputs/base
+          persist-credentials: false
+      - name: Read exact head as data
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: inputs/head
+          persist-credentials: false
+      - name: Verify and detach snapshot metadata
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git -C inputs/base rev-parse HEAD)" = "$BASE_SHA"
+          test "$(git -C inputs/head rev-parse HEAD)" = "$HEAD_SHA"
+          mv inputs/base/.git "$RUNNER_TEMP/base.git"
+          mv inputs/head/.git "$RUNNER_TEMP/head.git"
+      - name: Compare isolated renders
+        id: diff
+        continue-on-error: true
+        working-directory: engine
+        run: python -m manifest_diff.cli ../inputs/base ../inputs/head --artifact "$RUNNER_TEMP/report.json"
+      - name: Transfer redacted report
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: semantic-diff-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/report.json
+          if-no-files-found: error
+          retention-days: 1
+  publish:
+    needs: compare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    steps:
+      - name: Check out trusted publisher
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Validate report and reconcile comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.compare.outputs.artifact-id }}
+        run: python3 -I -c "import sys; sys.path.insert(0, '.'); from manifest_diff.publish import main; sys.exit(main())"
+      - name: Mark incomplete comparison
+        if: needs.compare.outputs.outcome != 'success'
+        run: exit 1

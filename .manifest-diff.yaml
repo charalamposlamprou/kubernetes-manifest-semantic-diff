@@ -1,0 +1,48 @@
+version: 1
+sensitivePaths: [/metadata/annotations/example.com~1credential]
+targets:
+  - name: backend-development
+    type: kustomize
+    application: backend
+    environment: development
+    path: examples/backend/overlays/development
+  - name: payments-development
+    type: helm
+    application: payments
+    environment: development
+    chart: examples/payments
+    release: payments
+    namespace: development
+    kubeVersion: "1.32.0"
+    apiVersions: [networking.k8s.io/v1]
+    values: [examples/payments/values.yaml, examples/environments/development/payments.yaml]
+  - name: backend-staging
+    type: kustomize
+    application: backend
+    environment: staging
+    path: examples/backend/overlays/staging
+  - name: payments-staging
+    type: helm
+    application: payments
+    environment: staging
+    chart: examples/payments
+    release: payments
+    namespace: staging
+    kubeVersion: "1.32.0"
+    apiVersions: [networking.k8s.io/v1]
+    values: [examples/payments/values.yaml, examples/environments/staging/payments.yaml]
+  - name: backend-production
+    type: kustomize
+    application: backend
+    environment: production
+    path: examples/backend/overlays/production
+  - name: payments-production
+    type: helm
+    application: payments
+    environment: production
+    chart: examples/payments
+    release: payments
+    namespace: production
+    kubeVersion: "1.32.0"
+    apiVersions: [networking.k8s.io/v1]
+    values: [examples/payments/values.yaml, examples/environments/production/payments.yaml]
