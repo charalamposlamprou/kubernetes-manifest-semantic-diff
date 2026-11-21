@@ -32,12 +32,15 @@ class Loader(yaml.SafeLoader):
 
 def check_json(value):
     if isinstance(value, dict):
-        for child in value.values():
+        for key, child in value.items():
+            key.encode("utf-8")
             check_json(child)
     elif isinstance(value, list):
         for child in value:
             check_json(child)
-    elif type(value) not in (str, int, float, bool, type(None)) or (
+    elif type(value) is str:
+        value.encode("utf-8")
+    elif type(value) not in (int, float, bool, type(None)) or (
         type(value) is float and not math.isfinite(value)
     ):
         raise Problem("Use JSON-compatible YAML values. Quote dates and binary strings.")

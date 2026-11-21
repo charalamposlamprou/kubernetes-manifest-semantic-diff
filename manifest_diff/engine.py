@@ -20,6 +20,15 @@ def compare(base, head, renderer):
         except Problem as exc:
             errors.append([side, "inventory", str(exc)])
             targets = {}
+        except OSError:
+            errors.append(
+                [
+                    side,
+                    "inventory",
+                    "Unable to read revision files. Check paths and file permissions.",
+                ]
+            )
+            targets = {}
         inventories.append(targets)
     report = {
         "counts": dict.fromkeys(STATUSES, 0),
@@ -37,6 +46,8 @@ def compare(base, head, renderer):
     left, right = inventories
     budget = 0
     for name in sorted(left.keys() | right.keys()):
+        if name not in left or name not in right:
+            report["targets"].append([name, "Added" if name in right else "Removed"])
         indexes = []
         for side, root, targets in [("base", base, left), ("head", head, right)]:
             try:
@@ -55,13 +66,11 @@ def compare(base, head, renderer):
                         index(docs, target.namespace, patterns, known, target.cluster_scoped)
                     )
             except Problem as exc:
-                errors.append([side, name, str(exc)])
+                errors.append([side, name, f"{targets[name].type}: {exc}"])
         if len(indexes) != 2:
             continue
         a, b = indexes
         target = right.get(name) or left[name]
-        if name not in left or name not in right:
-            report["targets"].append([name, "Added" if name in right else "Removed"])
         for key in sorted(a.keys() | b.keys()):
             group, kind, ns, resource = key
             rows = []

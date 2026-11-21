@@ -43,10 +43,18 @@ def flatten(raw):
     def append(doc):
         if not isinstance(doc, dict):
             raise Problem("Manifest document must be a Kubernetes object.")
-        if doc.get("kind") == "List" and doc.get("apiVersion") == "v1":
+        if doc.get("kind") in ("List", "SecretList") and doc.get("apiVersion") == "v1":
             if not isinstance(doc.get("items"), list):
                 raise Problem("Expected items in Kubernetes List.")
             for child in doc["items"]:
+                if doc["kind"] == "SecretList":
+                    if (
+                        not isinstance(child, dict)
+                        or child.get("kind", "Secret") != "Secret"
+                        or child.get("apiVersion", "v1") != "v1"
+                    ):
+                        raise Problem("SecretList contains an invalid Secret object.")
+                    child = {**child, "kind": "Secret", "apiVersion": "v1"}
                 append(child)
         else:
             items.append(doc)
@@ -93,22 +101,30 @@ def remember(value, known, decode=False):
                 pass
 
 
-def protect(value, path, patterns, secret, known):
-    secret_field = secret and (
-        (len(path) == 2 and path[0] in ("data", "stringData"))
-        or path == ("metadata", "annotations", "kubectl.kubernetes.io/last-applied-configuration")
+def protect(value, path, patterns, secret_root, known):
+    if secret_root is None and isinstance(value, dict) and value.get("kind") == "Secret":
+        secret_root = len(path)
+        if any(k in value and not isinstance(value[k], dict) for k in ("data", "stringData")):
+            raise Problem("Secret data and stringData must be mappings.")
+    relative = path[secret_root:] if secret_root is not None else ()
+    secret_field = (len(relative) == 2 and relative[0] in ("data", "stringData")) or relative == (
+        "metadata",
+        "annotations",
+        "kubectl.kubernetes.io/last-applied-configuration",
     )
     if secret_field or any(
         len(pattern) == len(path)
         and all(a == "*" or a == b for a, b in zip(pattern, path, strict=True))
         for pattern in patterns
     ):
-        remember(value, known, decode=secret and path[0] == "data")
+        remember(value, known, decode=relative[:1] == ("data",))
         return Mask(value)
     if isinstance(value, dict):
-        return {k: protect(v, (*path, k), patterns, secret, known) for k, v in value.items()}
+        return {k: protect(v, (*path, k), patterns, secret_root, known) for k, v in value.items()}
     if isinstance(value, list):
-        return [protect(v, (*path, str(i)), patterns, secret, known) for i, v in enumerate(value)]
+        return [
+            protect(v, (*path, str(i)), patterns, secret_root, known) for i, v in enumerate(value)
+        ]
     return value
 
 
@@ -142,12 +158,7 @@ def index(docs, namespace, patterns, known, cluster_scoped=()):
         key = (group, kind, "" if cluster else meta["namespace"], name)
         if key in result:
             raise Problem("Duplicate group, kind, namespace and name within one target.")
-        is_secret = (group, kind) == ("", "Secret")
-        if is_secret and any(
-            k in obj and not isinstance(obj[k], dict) for k in ("data", "stringData")
-        ):
-            raise Problem("Secret data and stringData must be mappings.")
-        result[key] = protect(obj, (), patterns, is_secret, known)
+        result[key] = protect(obj, (), patterns, None, known)
     return result
 
 
