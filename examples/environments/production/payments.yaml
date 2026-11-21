@@ -1,4 +1,5 @@
 replicas: 3
 host: payments.production.example.test
 cpu: 250m
-memory: 256Mi
+memory: 512Mi
+dummyToken: fixture-rotation-only
