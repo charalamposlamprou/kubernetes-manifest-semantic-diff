@@ -4,7 +4,7 @@ namespace: production
 resources: [../../base]
 images:
   - name: ghcr.io/example/backend
-    newTag: "1.0.0"
+    newTag: "1.1.0"
 patches:
   - path: capacity.yaml
   - target: {kind: Ingress, name: backend}
