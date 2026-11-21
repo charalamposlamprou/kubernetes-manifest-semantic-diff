@@ -2,6 +2,8 @@
 
 Review the Kubernetes objects a pull request would produce. A change to a Helm values file or a Kustomize patch appears as a field change on the resulting workload. Formatting-only edits produce a clean review. One bot-owned comment follows the PR across pushes.
 
+The public validation PR exercised both renderers. Its first review found two modified Deployments. A subsequent push added a Secret rotation and updated the same comment. [Validation PR](https://github.com/charalamposlamprou/kubernetes-manifest-semantic-diff/pull/1) · [Initial review run](https://github.com/charalamposlamprou/kubernetes-manifest-semantic-diff/actions/runs/44908013477) · [Secret rotation run](https://github.com/charalamposlamprou/kubernetes-manifest-semantic-diff/actions/runs/44908163884)
+
 ## How a review works
 
 ```mermaid

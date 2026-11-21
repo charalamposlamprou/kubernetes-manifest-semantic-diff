@@ -79,6 +79,7 @@ def markdown(report, head=None):
             + "\n".join(f"| {s} | {report['counts'][s]} |" for s in STATUSES),
         ]
     )
+    headline = "\n\n".join(parts)
     if report["errors"]:
         parts.append("**Comparison incomplete.** Failed targets are excluded from the counts.")
         parts.extend(
@@ -98,7 +99,7 @@ def markdown(report, head=None):
     summary = "\n\n".join(parts)
     if len(summary.encode()) > 45_000:
         summary = (
-            "\n\n".join(parts[:4])
+            headline
             + f"\n\n{len(report['errors'])} errors and {len(report['targets'])} inventory changes. See the redacted artifact."
         )
     details = []
