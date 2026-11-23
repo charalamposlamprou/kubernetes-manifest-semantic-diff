@@ -1,0 +1,6 @@
+paths:
+  .github/workflows/kustomize-diff.yaml:
+    ignore:
+      # actionlint 1.7.12 predates GitHub.com's reusable workflow identity fields.
+      # https://github.com/rhysd/actionlint/issues/757
+      - 'property "workflow_(repository|sha)" is not defined in object type \{check_run_id:'
