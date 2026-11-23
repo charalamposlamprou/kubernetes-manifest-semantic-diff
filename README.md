@@ -4,7 +4,7 @@ See what a Helm or Kustomize pull request changes in the rendered Kubernetes obj
 
 ## Use as a reusable GitHub Actions workflow
 
-In the repository that holds your manifests, save the following caller as **`.github/workflows/kustomize-diff.yaml`**. Keep that filename because the publisher verifies the caller’s workflow path before commenting. [Download the caller YAML](examples/consumer-workflow.yaml)
+In the repository that holds your manifests, save the following caller as **`.github/workflows/manifest-diff.yaml`**. Keep that filename because the publisher verifies the caller’s workflow path before commenting. [Download the caller YAML](examples/consumer-workflow.yaml)
 
 ```yaml
 name: Kubernetes manifest review
@@ -21,7 +21,7 @@ jobs:
       contents: read
       actions: read
       pull-requests: write
-    uses: charalamposlamprou/kubernetes-manifest-semantic-diff/.github/workflows/kustomize-diff.yaml@fd585c9f4a55550eb48fe050d29c48568db1f12b
+    uses: charalamposlamprou/kubernetes-manifest-semantic-diff/.github/workflows/manifest-diff.yaml@da2ea572452f0d3727d3de906bd434a435fb8b8f
 ```
 
 1. Enable GitHub Actions and allow the repository to call this public workflow. The job uses the caller’s built-in `GITHUB_TOKEN`. Comparison needs read access to the repository. Publication reads the run artifact and writes the PR comment.
