@@ -30,8 +30,6 @@ jobs:
 
 The example pins the workflow, engine, and publisher with one commit SHA. To upgrade, update the SHA after `@` to a reviewed commit that supports `workflow_call`. The caller works on GitHub.com with GitHub-hosted Ubuntu runners and requires no custom secrets or cluster credentials.
 
-When upgrading from `kustomize-diff.yaml`, rename your caller to `manifest-diff.yaml` and update its `uses` line to the path and commit shown above in the same change.
-
 ## How a review works
 
 ```mermaid
