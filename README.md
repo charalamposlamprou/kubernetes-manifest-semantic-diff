@@ -1,8 +1,34 @@
 # Kubernetes Manifest Semantic Diff
 
-Review the Kubernetes objects a pull request would produce. A change to a Helm values file or a Kustomize patch appears as a field change on the resulting workload. Formatting-only edits produce a clean review. One bot-owned comment follows the PR across pushes.
+See what a Helm or Kustomize pull request changes in the rendered Kubernetes objects. One PR comment groups changes by application and environment, shows field-level diffs, and redacts Secret values. For example, changing a production Helm value from `100m` to `250m` appears under the affected Deployment’s CPU request. Reformatting the values file produces a clean review. [See a review on GitHub](https://github.com/charalamposlamprou/kubernetes-manifest-semantic-diff/pull/1#issuecomment-7063159011)
 
-The public validation PR exercised both renderers. Its first review found two modified Deployments. A subsequent push added a Secret rotation and updated the same comment. [Validation PR](https://github.com/charalamposlamprou/kubernetes-manifest-semantic-diff/pull/1) · [Initial review run](https://github.com/charalamposlamprou/kubernetes-manifest-semantic-diff/actions/runs/44908013477) · [Secret rotation run](https://github.com/charalamposlamprou/kubernetes-manifest-semantic-diff/actions/runs/44908163884)
+## Use as a reusable GitHub Actions workflow
+
+In the repository that holds your manifests, save the following caller as **`.github/workflows/manifest-diff.yaml`**. Keep that filename because the publisher verifies the caller’s workflow path before commenting. [Download the caller YAML](examples/consumer-workflow.yaml)
+
+```yaml
+name: Kubernetes manifest review
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  review:
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    uses: charalamposlamprou/kubernetes-manifest-semantic-diff/.github/workflows/manifest-diff.yaml@da2ea572452f0d3727d3de906bd434a435fb8b8f
+```
+
+1. Enable GitHub Actions and allow the repository to call this public workflow. The job uses the caller’s built-in `GITHUB_TOKEN`. Comparison needs read access to the repository. Publication reads the run artifact and writes the PR comment.
+2. Merge the caller into your default branch. The engine discovers local Helm charts and Kustomize overlays automatically. If you deploy a chart with environment-specific values or need to select particular overlays, add a root inventory. [Configure the deployment inventory](#configure-the-deployment-inventory)
+3. Open a pull request that changes a chart, values file, or overlay. The bot posts the rendered changes and updates the same comment when you push another commit. A render error identifies the affected target and fails the check.
+
+The example pins the workflow, engine, and publisher with one commit SHA. To upgrade, update the SHA after `@` to a reviewed commit that supports `workflow_call`. The caller works on GitHub.com with GitHub-hosted Ubuntu runners and requires no custom secrets or cluster credentials.
 
 ## How a review works
 
@@ -97,19 +123,7 @@ Without a config, discovery looks for `kustomization.yaml`, `kustomization.yml`,
 - Mappings and resource document order are insignificant. Named regular containers, volumes and named Service ports match by name. Init containers and environment entries match by name and report relative order changes. Their execution or expansion can depend on order. Duplicate or missing list keys fall back to positional comparison. Commands, arguments, CR lists and other unclassified lists compare positionally. Kubernetes quantity spellings, equivalent RBAC rule formulations and schema defaults can therefore produce review differences.
 - Secret `data` and `stringData` values and a Secret's last-applied annotation are protected in memory before the report is built. Changed fields show `[redacted]` on both sides. Secret key names, object identity and resource counts remain reviewable. A repeated known sensitive literal in another displayed field is also suppressed. Apply explicit paths to application-specific credentials. A transformed credential intentionally placed into an unrelated public field requires its own redaction policy.
 
-## GitHub Actions setup and adoption
-
-In this repository the workflow is ready on the default branch. Enable Actions and permit the workflow's declared token permissions. Use GitHub-hosted Ubuntu runners. A fork PR can be reviewed with the base repository's trusted workflow. The publication path targets GitHub.com and its GitHub Actions bot identity.
-
-To use the implementation in another repository:
-
-1. Copy **only** `.github/workflows/kustomize-diff.yaml` to the same path in the consumer. Keep the filename because the publisher verifies its identity.
-2. In the steps **Check out trusted engine** and **Check out trusted publisher**, add `repository: charalamposlamprou/kubernetes-manifest-semantic-diff` under `with` and set `ref` in both to the same reviewed, immutable release commit SHA. Leave the two input checkouts pointed at the consumer's event SHAs. A public engine repository is readable using the standard token.
-3. Add the consumer's deployment inventory where needed. Merge the workflow to its default branch and open a PR. Update the two engine pins together when upgrading.
-
-The versioned Python package also exposes `manifest-diff` as a console entry point. It can be installed from an immutable Git revision for local tools. The GitHub publisher has no third-party Python dependency. Renderer argument adapters live in `manifest_diff/render.py`. Resource comparison consumes ordinary Kubernetes objects regardless of their renderer.
-
-### Trust and permissions
+## Trust and permissions
 
 | Job | Token permissions | Inputs and responsibilities |
 |---|---|---|
@@ -203,67 +217,7 @@ python -m build
 
 Install `build` separately for the optional package build. Tests invoke the pinned native Helm and Kustomize executables and exercise embedded chart dependencies, hooks, CRDs, overlays, ordered values, discovery, normalization, redaction, artifact validation, comment reconciliation, and an exhaustive 28-point requirements matrix. Main CI additionally runs the Docker production path and checksum-verified actionlint 1.7.12. Regenerate dependency locks using `uv pip compile --universal --python-version 3.12 --generate-hashes` on the respective `.in` files.
 
-### Test coverage metrics
-
-The test suite contains **104 tests** executing in ~9 seconds with **94% statement coverage**:
-
-| Module | Statements | Miss | Coverage | Notes |
-|---|---:|---:|---:|---|
-| `manifest_diff/__init__.py` | 0 | 0 | 100% | Package root |
-| `manifest_diff/report.py` | 123 | 2 | 98% | Markdown reports, summary counts, code fences |
-| `manifest_diff/cli.py` | 29 | 1 | 97% | CLI commands, entry points, argument handling |
-| `manifest_diff/config.py` | 116 | 4 | 97% | Discovery, target inventories, policy parsing |
-| `manifest_diff/patch.py` | 38 | 2 | 95% | Unified YAML diff hunks, ordered lists |
-| `manifest_diff/input.py` | 64 | 4 | 94% | Hardened YAML loader, traversal limits |
-| `manifest_diff/semantic.py` | 166 | 12 | 93% | Canonical identities, CRDs, list strategies |
-| `manifest_diff/engine.py` | 106 | 9 | 92% | Diff orchestration, budget management |
-| `manifest_diff/publish.py` | 85 | 7 | 92% | Artifact provenance, idempotent comment sync |
-| `manifest_diff/render.py` | 76 | 7 | 91% | Helm & Kustomize adapters, Docker sandbox |
-| **TOTAL** | **803** | **48** | **94%** | **104 passed** |
-
-### Comprehensive 28-requirement verification matrix
-
-The dedicated test module `tests/test_coverage_matrix.py` directly validates each requirement from the specification:
-
-| # | Requirement | Test Function | Status | Verification Detail |
-|---|---|---|:---:|---|
-| 1 | Helm-only repositories | `test_01_helm_only_repository` | PASSED | Auto-discovery and rendering of standalone Helm chart |
-| 2 | Kustomize-only repositories | `test_02_kustomize_only_repository` | PASSED | Auto-discovery and rendering of standalone Kustomize overlay |
-| 3 | Mixed repositories | `test_03_mixed_repository` | PASSED | Simultaneous rendering of Helm and Kustomize targets |
-| 4 | Added resources | `test_04_added_resources` | PASSED | Added Service resource detected in diff and counts |
-| 5 | Removed resources | `test_05_removed_resources` | PASSED | Removed Service resource detected in diff and counts |
-| 6 | Modified resources | `test_06_modified_resources` | PASSED | In-place workload mutation detected |
-| 7 | Replica changes | `test_07_replica_changes` | PASSED | `spec.replicas`: 2 → 4 detected |
-| 8 | Image changes | `test_08_image_changes` | PASSED | `containers[app].image`: `backend:v1` → `backend:v2` |
-| 9 | CPU and memory changes | `test_09_cpu_and_memory_changes` | PASSED | CPU request `100m` → `250m`, memory limit `256Mi` → `512Mi` |
-| 10 | Environment variable changes | `test_10_environment_variable_changes` | PASSED | Named env var addition and value changes detected |
-| 11 | YAML key reordering | `test_11_yaml_key_reordering` | PASSED | Mapping keys reordered alphabetically produce zero diff |
-| 12 | Resource document reordering | `test_12_resource_document_reordering` | PASSED | Multi-document stream reordering produces zero diff |
-| 13 | Kubernetes list semantics | `test_13_kubernetes_list_semantics` | PASSED | Container name matching, initContainer order sensitivity |
-| 14 | Nested object changes | `test_14_nested_object_changes` | PASSED | Deep mutations inside `securityContext.sysctls` detected |
-| 15 | Custom Resources | `test_15_custom_resources` | PASSED | Custom CRD scope resolution and CR field diffing |
-| 16 | Duplicate resource identities | `test_16_duplicate_resource_identities` | PASSED | Duplicate `(group, kind, ns, name)` raises actionable error |
-| 17 | Invalid YAML | `test_17_invalid_yaml` | PASSED | Syntax errors, unquoted dates, and YAML aliases rejected |
-| 18 | Failed Helm rendering | `test_18_failed_helm_rendering` | PASSED | Chart failure reports diagnostic without silent deletion |
-| 19 | Failed Kustomize rendering | `test_19_failed_kustomize_rendering` | PASSED | Overlay failure reports diagnostic without silent deletion |
-| 20 | Missing values files | `test_20_missing_values_files` | PASSED | Unresolvable values file path raises validation error |
-| 21 | Added or removed targets | `test_21_added_or_removed_rendering_targets` | PASSED | Target addition and deletion tracked in inventory diff |
-| 22 | Secret redaction | `test_22_secret_redaction` | PASSED | `data`, `stringData`, and custom pointers show `[redacted]` |
-| 23 | Oversized reports | `test_23_oversized_reports` | PASSED | Reports exceeding 60k bytes fall back to concise summary |
-| 24 | Existing PR comment updates | `test_24_existing_pr_comment_updates` | PASSED | Existing bot comment updated via `PATCH` (no duplicate) |
-| 25 | Repeated workflow execution | `test_25_repeated_workflow_execution` | PASSED | Idempotent execution performs 0 writes when comment matches |
-| 26 | Untrusted PR input | `test_26_untrusted_pr_input` | PASSED | Path traversal (`../`, `/etc/passwd`, symlinks) blocked |
-| 27 | Artifact validation | `test_27_artifact_validation` | PASSED | Tampered context, wrong digest, and zip slip blocked |
-| 28 | No semantic changes | `test_28_no_semantic_changes` | PASSED | Identical base and head produce clean no-change message |
-
-### Live GitHub Actions validation results
-
-End-to-end continuous integration and pull request reconciliation have been validated against live GitHub runners:
-
-- **Validation Pull Request**: [charalamposlamprou/kubernetes-manifest-semantic-diff#1](https://github.com/charalamposlamprou/kubernetes-manifest-semantic-diff/pull/1)
-- **Consolidated PR Comment**: [Single Bot-Owned Comment #7063159011](https://github.com/charalamposlamprou/kubernetes-manifest-semantic-diff/pull/1#issuecomment-7063159011) (Updated in place across multiple pushes)
-- **Engine CI Workflow Run**: [Engine tests #45253335450](https://github.com/charalamposlamprou/kubernetes-manifest-semantic-diff/actions/runs/45253335450) (`main` branch)
-- **Review Workflow Run**: [Kubernetes manifest review #45253685510](https://github.com/charalamposlamprou/kubernetes-manifest-semantic-diff/actions/runs/45253685510) (`pull_request_target`)
+The [integration tests](tests/test_integration.py) exercise real charts and overlays. The [behavior matrix](tests/test_coverage_matrix.py) covers 28 review scenarios, and the [publisher tests](tests/test_publish.py) cover artifact provenance and comment updates.
 
 ## Troubleshooting and limits
 
@@ -278,39 +232,3 @@ End-to-end continuous integration and pull request reconciliation have been vali
 | Input rejected | Keep revisions within 60,000 inventory entries, 128 targets, 8 MiB of rendered output per invocation, 60 seconds per render and bounded YAML depth/node count. Use JSON-compatible YAML with unique string keys and expanded aliases. Visible repository-relative config paths keep untrusted input inside its snapshot. |
 
 These are offline rendered comparisons. Live admission mutation, server-side defaulting and conversion, cluster-specific API schemas, controller reconciliation, runtime drift, and external secret resolution can change the applied result. A periodic Helm value can also agree across two quick renders and vary later. Independent targets can intentionally contain the same resource. Counts are per target. Offline diffing does not establish whether a deployment will succeed.
-
-Future improvements include OpenAPI-driven scope and list strategies, Kubernetes quantity equivalence and optional target-specific review budgets.
-
-## Repository layout
-
-```text
-.github/workflows/
-  ├── kustomize-diff.yaml  PR semantic diff review workflow (compare + publish)
-  └── ci.yaml              Engine tests, linter, coverage, and actionlint CI
-ci/                        Renderer container Dockerfile and hashed Python lockfiles
-manifest_diff/
-  ├── cli.py               Console entry point (supports --native and --artifact)
-  ├── config.py            Inventory loader and automatic chart/kustomize discovery
-  ├── engine.py            Diff orchestration, inventory comparison, and change budgeting
-  ├── input.py             Hardened YAML parsing, depth/size/node complexity bounds
-  ├── patch.py             Unified diff hunk generator with schema-aware ordering
-  ├── publish.py           Privileged artifact validator and idempotent PR commenter
-  ├── render.py            Helm & Kustomize adapters and containerized isolation
-  ├── report.py            Markdown presentation, summary tables, and sanitization
-  └── semantic.py          Canonical resource identity, CRD scopes, and secret masking
-examples/
-  ├── backend/             Kustomize base, RBAC components, and dev/staging/prod overlays
-  ├── payments/            Helm chart with hook, CRDs, and vendored subchart
-  ├── environments/        Environment-specific Helm values overrides
-  ├── podinfo/             Standalone microservice used for live PR validation
-  └── review.patch         Replayable demonstration patch
-tests/
-  ├── test_boundaries.py   Security boundaries, CLI, container sandbox, and CR scopes
-  ├── test_coverage_matrix.py Dedicated 28-requirement verification suite
-  ├── test_integration.py  Integration tests using real pinned Helm and Kustomize binaries
-  ├── test_patch.py        Unified diff hunks, credential leakage prevention, and code fences
-  ├── test_publish.py      GitHub API provenance checks and comment update idempotency
-  └── test_semantic.py     Canonical identity, YAML key/document reordering, and list semantics
-.manifest-diff.yaml        Root deployment inventory and custom sensitivePaths policy
-pyproject.toml             Package metadata, Ruff linter/formatter config, and pytest settings
-```

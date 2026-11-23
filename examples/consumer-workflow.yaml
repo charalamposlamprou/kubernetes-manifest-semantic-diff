@@ -1,0 +1,16 @@
+# Save as .github/workflows/manifest-diff.yaml in your repository.
+name: Kubernetes manifest review
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  review:
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+    uses: charalamposlamprou/kubernetes-manifest-semantic-diff/.github/workflows/manifest-diff.yaml@da2ea572452f0d3727d3de906bd434a435fb8b8f

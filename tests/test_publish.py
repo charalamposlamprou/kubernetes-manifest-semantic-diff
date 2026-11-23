@@ -76,6 +76,7 @@ class Service:
         if "/runs/" in path:
             return self.run
         if "/workflows/" in path:
+            assert path.endswith("/workflows/manifest-diff.yaml")
             return {"id": 3, "path": WORKFLOW}
         if path.endswith("/zip"):
             assert binary
