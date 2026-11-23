@@ -6,7 +6,7 @@ from copy import deepcopy
 
 import pytest
 
-from manifest_diff.publish import BOT_ID, WORKFLOW, artifact, publish, unpack
+from manifest_diff.publish import BOT_ID, LEGACY_WORKFLOW, WORKFLOW, artifact, publish, unpack
 from manifest_diff.report import MARKER, markdown, validate
 
 CTX = {"repo": "example/demo", "pr": 7, "base": "a" * 40, "head": "b" * 40, "run": 12, "attempt": 1}
@@ -28,7 +28,8 @@ def pack(data, path="report.json"):
 
 
 class Service:
-    def __init__(self):
+    def __init__(self, workflow_path=WORKFLOW):
+        self.workflow_path = workflow_path
         self.pr = {
             "number": 7,
             "state": "open",
@@ -40,7 +41,7 @@ class Service:
             "id": 12,
             "run_attempt": 1,
             "event": "pull_request_target",
-            "path": WORKFLOW,
+            "path": workflow_path,
             "workflow_id": 3,
             "head_sha": CTX["base"],
             "repository": {"id": 4, "full_name": CTX["repo"]},
@@ -76,7 +77,8 @@ class Service:
         if "/runs/" in path:
             return self.run
         if "/workflows/" in path:
-            return {"id": 3, "path": WORKFLOW}
+            assert path.endswith("/workflows/" + self.workflow_path.rsplit("/", 1)[1])
+            return {"id": 3, "path": self.workflow_path}
         if path.endswith("/zip"):
             assert binary
             return self.raw
@@ -87,8 +89,9 @@ class Service:
         return self.comments
 
 
-def test_idempotent_owned_comment_and_staleness():
-    service = Service()
+@pytest.mark.parametrize("workflow_path", [WORKFLOW, LEGACY_WORKFLOW])
+def test_idempotent_owned_comment_and_staleness(workflow_path):
+    service = Service(workflow_path)
     publish(CTX, 9, service)
     publish(CTX, 9, service)
     assert service.writes == ["POST"]

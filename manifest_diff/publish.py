@@ -13,7 +13,8 @@ from pathlib import Path
 
 from .report import MARKER, markdown, require, validate
 
-WORKFLOW = ".github/workflows/kustomize-diff.yaml"
+WORKFLOW = ".github/workflows/manifest-diff.yaml"
+LEGACY_WORKFLOW = ".github/workflows/kustomize-diff.yaml"
 BOT_ID = 41898282
 MAX_ARCHIVE = 1024 * 1024
 
@@ -80,12 +81,14 @@ def artifact(ctx, artifact_id, request):
     require(type(artifact_id) is int and artifact_id > 0)
     prefix = "repos/" + ctx["repo"]
     run = request(f"{prefix}/actions/runs/{ctx['run']}")
-    workflow = request(f"{prefix}/actions/workflows/kustomize-diff.yaml")
+    workflow_path = run["path"]
+    require(workflow_path in (WORKFLOW, LEGACY_WORKFLOW))
+    workflow = request(f"{prefix}/actions/workflows/{Path(workflow_path).name}")
     require(
         run["id"] == ctx["run"]
         and run["run_attempt"] == ctx["attempt"]
         and run["event"] == "pull_request_target"
-        and run["path"] == workflow["path"] == WORKFLOW
+        and workflow["path"] == workflow_path
         and run["workflow_id"] == workflow["id"]
         and run["repository"]["full_name"] == ctx["repo"]
     )
