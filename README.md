@@ -21,7 +21,7 @@ jobs:
       contents: read
       actions: read
       pull-requests: write
-    uses: charalamposlamprou/kubernetes-manifest-semantic-diff/.github/workflows/manifest-diff.yaml@336c8f43934ba3f81cbef31839f10c8535320d54
+    uses: charalamposlamprou/kubernetes-manifest-semantic-diff/.github/workflows/manifest-diff.yaml@da2ea572452f0d3727d3de906bd434a435fb8b8f
 ```
 
 1. Enable GitHub Actions and allow the repository to call this public workflow. The job uses the caller’s built-in `GITHUB_TOKEN`. Comparison needs read access to the repository. Publication reads the run artifact and writes the PR comment.
@@ -30,7 +30,7 @@ jobs:
 
 The example pins the workflow, engine, and publisher with one commit SHA. To upgrade, update the SHA after `@` to a reviewed commit that supports `workflow_call`. The caller works on GitHub.com with GitHub-hosted Ubuntu runners and requires no custom secrets or cluster credentials.
 
-Existing installations can keep their `kustomize-diff.yaml` caller. To adopt the new name, rename the caller and update its `uses` line to the path and commit shown above in the same change.
+When upgrading from `kustomize-diff.yaml`, rename your caller to `manifest-diff.yaml` and update its `uses` line to the path and commit shown above in the same change.
 
 ## How a review works
 
