@@ -2,9 +2,13 @@
 
 See what a Helm or Kustomize pull request changes in the rendered Kubernetes objects. One PR comment groups changes by application and environment, shows field-level diffs, and redacts Secret values. For example, changing a production Helm value from `100m` to `250m` appears under the affected Deployment’s CPU request. Reformatting the values file produces a clean review. [See a review on GitHub](https://github.com/charalamposlamprou/kubernetes-manifest-semantic-diff/pull/1#issuecomment-7063159011)
 
-## Use as a reusable GitHub Actions workflow
+## GitHub Actions setup
 
-In the repository that holds your manifests, save the following caller as **`.github/workflows/manifest-diff.yaml`**. Keep that filename because the publisher verifies the caller’s workflow path before commenting. [Download the caller YAML](examples/consumer-workflow.yaml)
+Choose one of the two examples and save it as **`.github/workflows/manifest-diff.yaml`** in the repository that holds your manifests. Both publish the same PR review. The publisher verifies this exact workflow path before commenting.
+
+### Use as a reusable GitHub Actions workflow
+
+Use this option to keep the review jobs in this project. Your repository calls them with one job-level `uses` entry. To upgrade, change the commit SHA after `@`. [Complete caller YAML](examples/consumer-workflow.yaml)
 
 ```yaml
 name: Kubernetes manifest review
@@ -24,11 +28,15 @@ jobs:
     uses: charalamposlamprou/kubernetes-manifest-semantic-diff/.github/workflows/manifest-diff.yaml@da2ea572452f0d3727d3de906bd434a435fb8b8f
 ```
 
-1. Enable GitHub Actions and allow the repository to call this public workflow. The job uses the caller’s built-in `GITHUB_TOKEN`. Comparison needs read access to the repository. Publication reads the run artifact and writes the PR comment.
-2. Merge the caller into your default branch. The engine discovers local Helm charts and Kustomize overlays automatically. If you deploy a chart with environment-specific values or need to select particular overlays, add a root inventory. [Configure the deployment inventory](#configure-the-deployment-inventory)
-3. Open a pull request that changes a chart, values file, or overlay. The bot posts the rendered changes and updates the same comment when you push another commit. A render error identifies the affected target and fails the check.
+### Run the compare and publish jobs in your own workflow
 
-The example pins the workflow, engine, and publisher with one commit SHA. To upgrade, update the SHA after `@` to a reviewed commit that supports `workflow_call`. The caller works on GitHub.com with GitHub-hosted Ubuntu runners and requires no custom secrets or cluster credentials.
+Use the standalone example when you want to maintain the job definitions in your repository. Copy the **entire file**, including both jobs. The `compare` job checks out the engine, renders your PR’s base and head revisions, and uploads the redacted report. The `publish` job checks out the publisher, verifies that report, and updates the PR comment. Both trusted checkouts use the same `ENGINE_SHA`. When upgrading, update that pin and review changes to the example’s steps. [Complete standalone YAML](examples/standalone-workflow.yaml)
+
+### Run your first review
+
+1. Enable GitHub Actions. For the reusable option, allow the repository to call this public workflow. Both options use GitHub-hosted Ubuntu runners and the built-in `GITHUB_TOKEN`. Comparison needs read access to the repository. Publication reads the run artifact and writes the PR comment.
+2. Merge the workflow into your default branch. The engine discovers local Helm charts and Kustomize overlays automatically. To supply environment-specific Helm values or select particular overlays, add a root inventory. [Configure the deployment inventory](#configure-the-deployment-inventory)
+3. Open a pull request that changes a chart, values file, or overlay. The bot posts the rendered changes and updates the same comment on subsequent pushes. A render error identifies the affected target and fails the check.
 
 ## How a review works
 
