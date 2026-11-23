@@ -4,7 +4,7 @@ See what a Helm or Kustomize pull request changes in the rendered Kubernetes obj
 
 ## Use as a reusable GitHub Actions workflow
 
-In the repository that holds your manifests, save the following caller as **`.github/workflows/kustomize-diff.yaml`**. Keep that filename because the publisher verifies the caller’s workflow path before commenting. [Download the caller YAML](examples/consumer-workflow.yaml)
+In the repository that holds your manifests, save the following caller as **`.github/workflows/manifest-diff.yaml`**. Keep that filename because the publisher verifies the caller’s workflow path before commenting. [Download the caller YAML](examples/consumer-workflow.yaml)
 
 ```yaml
 name: Kubernetes manifest review
@@ -21,7 +21,7 @@ jobs:
       contents: read
       actions: read
       pull-requests: write
-    uses: charalamposlamprou/kubernetes-manifest-semantic-diff/.github/workflows/kustomize-diff.yaml@fd585c9f4a55550eb48fe050d29c48568db1f12b
+    uses: charalamposlamprou/kubernetes-manifest-semantic-diff/.github/workflows/manifest-diff.yaml@336c8f43934ba3f81cbef31839f10c8535320d54
 ```
 
 1. Enable GitHub Actions and allow the repository to call this public workflow. The job uses the caller’s built-in `GITHUB_TOKEN`. Comparison needs read access to the repository. Publication reads the run artifact and writes the PR comment.
@@ -29,6 +29,8 @@ jobs:
 3. Open a pull request that changes a chart, values file, or overlay. The bot posts the rendered changes and updates the same comment when you push another commit. A render error identifies the affected target and fails the check.
 
 The example pins the workflow, engine, and publisher with one commit SHA. To upgrade, update the SHA after `@` to a reviewed commit that supports `workflow_call`. The caller works on GitHub.com with GitHub-hosted Ubuntu runners and requires no custom secrets or cluster credentials.
+
+Existing installations can keep their `kustomize-diff.yaml` caller. To adopt the new name, rename the caller and update its `uses` line to the path and commit shown above in the same change.
 
 ## How a review works
 

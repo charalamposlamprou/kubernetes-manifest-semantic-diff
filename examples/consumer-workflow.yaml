@@ -1,4 +1,4 @@
-# Save as .github/workflows/kustomize-diff.yaml in your repository.
+# Save as .github/workflows/manifest-diff.yaml in your repository.
 name: Kubernetes manifest review
 
 on:
@@ -13,4 +13,4 @@ jobs:
       contents: read
       actions: read
       pull-requests: write
-    uses: charalamposlamprou/kubernetes-manifest-semantic-diff/.github/workflows/kustomize-diff.yaml@fd585c9f4a55550eb48fe050d29c48568db1f12b
+    uses: charalamposlamprou/kubernetes-manifest-semantic-diff/.github/workflows/manifest-diff.yaml@336c8f43934ba3f81cbef31839f10c8535320d54
