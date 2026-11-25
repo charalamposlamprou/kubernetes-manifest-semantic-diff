@@ -46,3 +46,8 @@ targets:
     kubeVersion: "1.32.0"
     apiVersions: [networking.k8s.io/v1]
     values: [examples/payments/values.yaml, examples/environments/production/payments.yaml]
+  - name: podinfo-production
+    type: kustomize
+    application: podinfo
+    environment: production
+    path: examples/podinfo
