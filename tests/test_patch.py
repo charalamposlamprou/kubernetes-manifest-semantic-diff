@@ -59,3 +59,39 @@ def test_patch_fence_and_schema():
         change["hunks"] = invalid
         with pytest.raises(ValueError):
             validate(report)
+
+
+def test_same_memory_value_stays_with_its_yaml_parent():
+    def resources(limit_cpu, limit_memory, request_cpu, request_memory):
+        return {
+            "resources": {
+                "limits": {"cpu": limit_cpu, "memory": limit_memory},
+                "requests": {"cpu": request_cpu, "memory": request_memory},
+            }
+        }
+
+    before = resources("100m", "32Mi", "10m", "16Mi")
+    after = resources("200m", "64Mi", "25m", "32Mi")
+    hunk = yaml_hunks(capture_pair(before, after, 10000), lambda doc: doc, "", "Pod")
+    assert hunk == [
+        "@@ -1,7 +1,7 @@",
+        " resources:",
+        "   limits:",
+        "-    cpu: 100m",
+        "-    memory: 32Mi",
+        "+    cpu: 200m",
+        "+    memory: 64Mi",
+        "   requests:",
+        "-    cpu: 10m",
+        "-    memory: 16Mi",
+        "+    cpu: 25m",
+        "+    memory: 32Mi",
+    ]
+
+
+def test_inserting_named_item_keeps_existing_sibling_as_context():
+    before = {"containers": [{"name": "api", "image": "shared"}]}
+    after = {"containers": [{"name": "worker", "image": "shared"}, *before["containers"]]}
+    hunks = yaml_hunks(capture_pair(before, after, 10000), lambda doc: doc, "", "Example")
+    edits = [line for line in hunks if line.startswith(("+", "-"))]
+    assert edits == ["+- image: shared", "+  name: worker"]
