@@ -2,9 +2,13 @@
 
 See what a Helm or Kustomize pull request changes in the rendered Kubernetes objects. One PR comment groups changes by application and environment, shows field-level diffs, and redacts Secret values. For example, changing a production Helm value from `100m` to `250m` appears under the affected Deployment’s CPU request. Reformatting the values file produces a clean review. [See a review on GitHub](https://github.com/charalamposlamprou/kubernetes-manifest-semantic-diff/pull/1#issuecomment-7063159011)
 
-## Use as a reusable GitHub Actions workflow
+## GitHub Actions setup
 
-In the repository that holds your manifests, save the following caller as **`.github/workflows/manifest-diff.yaml`**. Keep that filename because the publisher verifies the caller’s workflow path before commenting. [Download the caller YAML](examples/consumer-workflow.yaml)
+Choose one of the two examples and save it as **`.github/workflows/manifest-diff.yaml`** in the repository that holds your manifests. Both publish the same PR review. The publisher verifies this exact workflow path before commenting.
+
+### Use as a reusable GitHub Actions workflow
+
+Use this option to keep the review jobs in this project. Your repository calls them with one job-level `uses` entry. To upgrade, change the commit SHA after `@`. [Complete caller YAML](examples/consumer-workflow.yaml)
 
 ```yaml
 name: Kubernetes manifest review
@@ -24,11 +28,15 @@ jobs:
     uses: charalamposlamprou/kubernetes-manifest-semantic-diff/.github/workflows/manifest-diff.yaml@da2ea572452f0d3727d3de906bd434a435fb8b8f
 ```
 
-1. Enable GitHub Actions and allow the repository to call this public workflow. The job uses the caller’s built-in `GITHUB_TOKEN`. Comparison needs read access to the repository. Publication reads the run artifact and writes the PR comment.
-2. Merge the caller into your default branch. The engine discovers local Helm charts and Kustomize overlays automatically. If you deploy a chart with environment-specific values or need to select particular overlays, add a root inventory. [Configure the deployment inventory](#configure-the-deployment-inventory)
-3. Open a pull request that changes a chart, values file, or overlay. The bot posts the rendered changes and updates the same comment when you push another commit. A render error identifies the affected target and fails the check.
+### Run the compare and publish jobs in your own workflow
 
-The example pins the workflow, engine, and publisher with one commit SHA. To upgrade, update the SHA after `@` to a reviewed commit that supports `workflow_call`. The caller works on GitHub.com with GitHub-hosted Ubuntu runners and requires no custom secrets or cluster credentials.
+Use the standalone example when you want to maintain the job definitions in your repository. Copy the **entire file**, including both jobs. The `compare` job checks out the engine, renders your PR’s base and head revisions, and uploads the redacted report. The `publish` job checks out the publisher, verifies that report, and updates the PR comment. Both trusted checkouts use the same `ENGINE_SHA`. When upgrading, update that pin and review changes to the example’s steps. [Complete standalone YAML](examples/standalone-workflow.yaml)
+
+### Run your first review
+
+1. Enable GitHub Actions. For the reusable option, allow the repository to call this public workflow. Both options use GitHub-hosted Ubuntu runners and the built-in `GITHUB_TOKEN`. Comparison needs read access to the repository. Publication reads the run artifact and writes the PR comment.
+2. Merge the workflow into your default branch. The engine discovers local Helm charts and Kustomize overlays automatically. To supply environment-specific Helm values or select particular overlays, add a root inventory. [Configure the deployment inventory](#configure-the-deployment-inventory)
+3. Open a pull request that changes a chart, values file, or overlay. The bot posts the rendered changes and updates the same comment on subsequent pushes. A render error identifies the affected target and fails the check.
 
 ## How a review works
 
@@ -137,23 +145,25 @@ Only the versioned redacted JSON envelope is uploaded, with one-day retention. T
 
 ## Example review
 
-Applying `examples/review.patch` produces the following review. The file headers identify normalized render outputs for each target and resource. GitHub highlights additions and removals inside each expanded section. Hunk line numbers refer to the normalized YAML. Large resources can fall back to a field-only diff, and protected rotations identify the changed field.
+Applying `examples/review.patch` produces the review below. Scan the overview to find the application and environment you own. Expand a resource for its before/after values and its rendered diff. “Absent” means the field was omitted from that revision.
 
 ### Kubernetes Manifest Semantic Diff
 
-**Summary**
+**2 resource changes** · 0 added · 2 modified · 0 removed
 
-| Change | Count |
-|---|---:|
-| Added | 0 |
-| Modified | 2 |
-| Removed | 0 |
-
-**Result** · 2 resource changes.
+| Application | Environment | Target | Resources | Changes to inspect |
+|---|---|---|---:|---|
+| <code>backend</code> | <code>production</code> | <code>backend-production</code> | 1 | Replicas <code>3</code> → <code>4</code> · Container image |
+| <code>payments</code> | <code>production</code> | <code>payments-production</code> | 1 | Resource requests/limits |
 
 #### <code>backend</code> / <code>production</code> · <code>backend-production</code>
 
-<details open><summary>Modified · <code>Deployment.apps</code> / <code>production</code> / <code>backend</code></summary>
+<details><summary>Modified · <code>Deployment.apps</code> / <code>production</code> / <code>backend</code></summary>
+
+| Field | Before | After |
+|---|---|---|
+| <code>spec.replicas</code> | <code>3</code> | <code>4</code> |
+| <code>spec.template.spec.containers&#91;backend&#93;.image</code> | <code>&#34;ghcr.io/example/backend&#58;1.0.0&#34;</code> | <code>&#34;ghcr.io/example/backend&#58;1.1.0&#34;</code> |
 
 ```diff
 --- a/rendered/backend-production/production/Deployment.apps/backend.yaml
@@ -178,13 +188,15 @@ Applying `examples/review.patch` produces the following review. The file headers
          - containerPort: 8080
 ```
 
-Field paths · <code>spec.replicas</code>, <code>spec.template.spec.containers&#91;backend&#93;.image</code>
-
 </details>
 
 #### <code>payments</code> / <code>production</code> · <code>payments-production</code>
 
-<details open><summary>Modified · <code>Deployment.apps</code> / <code>production</code> / <code>payments</code></summary>
+<details><summary>Modified · <code>Deployment.apps</code> / <code>production</code> / <code>payments</code></summary>
+
+| Field | Before | After |
+|---|---|---|
+| <code>spec.template.spec.containers&#91;payments&#93;.resources.requests.cpu</code> | <code>&#34;100m&#34;</code> | <code>&#34;250m&#34;</code> |
 
 ```diff
 --- a/rendered/payments-production/production/Deployment.apps/payments.yaml
@@ -198,11 +210,9 @@ Field paths · <code>spec.replicas</code>, <code>spec.template.spec.containers&#
              memory: 128Mi
 ```
 
-Field paths · <code>spec.template.spec.containers&#91;payments&#93;.resources.requests.cpu</code>
-
 </details>
 
-An unchanged render says **No semantic changes found in rendered resources.** Oversized output falls back to counts and a notice. RBAC, Secret, NetworkPolicy and security-context changes carry a security-sensitive label. Review the field changes to determine whether access expanded or contracted.
+Failed targets appear above the overview and are excluded from resource counts. Protected fields stay redacted. When details exceed the comment limit, the overview is kept if it fits. Truncated artifacts show totals and a limit notice.
 
 ## Development and validation
 

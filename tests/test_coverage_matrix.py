@@ -409,7 +409,7 @@ def test_23_oversized_reports():
     }
     comment = markdown(big_report, "1234567890abcdef1234567890abcdef12345678")
     assert len(comment.encode("utf-8")) <= 60_000
-    assert "exceed the review limit" in comment and "| Modified | 400 |" in comment
+    assert "exceed the review limit" in comment and "400 modified" in comment
 
 
 # 24. Existing PR comment updates
