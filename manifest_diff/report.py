@@ -1,5 +1,6 @@
 """Strict report protocol and Markdown presentation. Uses only the standard library."""
 
+import json
 import re
 from collections import Counter
 from difflib import unified_diff
@@ -166,14 +167,51 @@ def field_highlight(path, before, after):
     return code(path)
 
 
-def review_highlights(changes):
-    labels = {}
+DEPLOYMENT_CONFIG_REF = re.compile(
+    r"spec\.template\.spec\.(?:(?:containers|initContainers)\[[^\]]+\]\."
+    r"(?:envFrom\[\d+\]\.configMapRef|env\[[^\]]+\]\.valueFrom\.configMapKeyRef)"
+    r"|volumes\[[^\]]+\]\.configMap)\.name"
+)
+
+
+def configmap_switches(changes):
+    # Names in field rows are JSON strings. Compare only against visible, same-target objects.
+    maps = {}
     for change in changes:
-        kind = change["resource"][1]
-        if change["status"] != "Modified":
+        group, kind, ns, name = change["resource"]
+        if (group, kind) == ("", "ConfigMap") and ns and "[redacted]" not in (ns, name):
+            maps[change["status"], ns, json.dumps(name, ensure_ascii=False)] = tuple(
+                change["resource"]
+            )
+
+    paired = set()
+    switches = {}
+    for change in changes:
+        group, kind, ns, name = resource = tuple(change["resource"])
+        if (group, kind, change["status"]) != ("apps", "Deployment", "Modified"):
+            continue
+        for field, before, after in change["fields"]:
+            if before == after or not DEPLOYMENT_CONFIG_REF.fullmatch(field):
+                continue
+            old = maps.get(("Removed", ns, before))
+            new = maps.get(("Added", ns, after))
+            if old and new:
+                paired.update((old, new))
+                switches[resource, field] = f"Deployment {code(name)} switches to a new ConfigMap"
+    return paired, switches
+
+
+def review_highlights(changes):
+    paired, switches = configmap_switches(changes)
+    labels = dict.fromkeys(switches.values())
+    for change in changes:
+        resource = tuple(change["resource"])
+        kind = resource[1]
+        if change["status"] != "Modified" and resource not in paired:
             labels[f"{code(kind)} {change['status'].lower()}"] = None
         for path, before, after in change["fields"]:
-            labels[field_highlight(path, before, after)] = None
+            if (resource, path) not in switches:
+                labels[field_highlight(path, before, after)] = None
     highlights = list(labels)
     shown = highlights[:6]
     if len(highlights) > len(shown):
