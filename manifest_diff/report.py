@@ -122,86 +122,150 @@ def resource_patch(change):
         longest = max((len(s) for s in re.findall(r"`{3,}", body)), default=2)
         fence = "`" * (longest + 1)
         blocks.append(f"{fence}diff\n{body}\n{fence}")
-    if change.get("hunks"):
-        paths = [code(field) for field, old, new in change["fields"] if old != new]
-        if paths:
-            blocks.append("Field paths · " + ", ".join(paths))
     masked = [code(field) for field, old, new in change["fields"] if old == new == "[redacted]"]
     if masked:
         blocks.append("Changed protected fields · " + ", ".join(masked))
     return "\n\n".join(blocks)
 
 
+def sensitive(change):
+    group, kind, _, _ = change["resource"]
+    return (
+        (
+            group == "rbac.authorization.k8s.io"
+            and kind in {"Role", "ClusterRole", "RoleBinding", "ClusterRoleBinding"}
+        )
+        or (group == "networking.k8s.io" and kind == "NetworkPolicy")
+        or kind == "Secret"
+        or any("securityContext" in row[0] for row in change["fields"])
+    )
+
+
+CONTAINER_FIELD = re.compile(
+    r"spec\.(?:jobTemplate\.spec\.)?(?:template\.spec\.)?"
+    r"(?:containers|initContainers)\[[^\]]+\]\.(.+)"
+)
+
+
+def field_highlight(path, before, after):
+    if path == "spec.replicas":
+        return f"Replicas {code(before)} → {code(after)}"
+    if path == "spec.minReadySeconds":
+        return "Minimum ready time"
+    match = CONTAINER_FIELD.fullmatch(path)
+    if match:
+        field = match[1]
+        if field.startswith(("resources.requests.", "resources.limits.")):
+            return "Resource requests/limits"
+        if field.startswith("readinessProbe."):
+            return "Readiness probe"
+        if re.fullmatch(r"envFrom\[\d+\]\.configMapRef\.name", field):
+            return "ConfigMap reference"
+        if field == "image":
+            return "Container image"
+    return code(path)
+
+
+def review_highlights(changes):
+    labels = {}
+    for change in changes:
+        kind = change["resource"][1]
+        if change["status"] != "Modified":
+            labels[f"{code(kind)} {change['status'].lower()}"] = None
+        for path, before, after in change["fields"]:
+            labels[field_highlight(path, before, after)] = None
+    highlights = list(labels)
+    shown = highlights[:6]
+    if len(highlights) > len(shown):
+        shown.append(f"+{len(highlights) - len(shown)} more")
+    if any(sensitive(change) for change in changes):
+        shown.insert(0, "**security-sensitive**")
+    return " · ".join(shown) or "See resource details"
+
+
+def resource_detail(change):
+    group, kind, ns, name = change["resource"]
+    ident = " / ".join(
+        code(s) for s in (kind + ("." + group if group else ""), ns or "(cluster)", name)
+    )
+    title = f"{change['status']} · {ident}"
+    if sensitive(change):
+        title += " · security-sensitive"
+    sections = []
+    if change["fields"]:
+        sections.append(
+            "| Field | Before | After |\n|---|---|---|\n"
+            + "\n".join(
+                "| " + " | ".join(code(v) if v != "∅" else "Absent" for v in row) + " |"
+                for row in change["fields"]
+            )
+        )
+    patch = resource_patch(change)
+    if patch:
+        sections.append(patch)
+    if not sections:
+        return "- " + title
+    return f"<details><summary>{title}</summary>\n\n" + "\n\n".join(sections) + "\n\n</details>"
+
+
 def markdown(report, head=None):
     validate(report)
-    parts = [MARKER, "### Kubernetes Manifest Semantic Diff"]
-    if head:
-        parts.append("Reviewed head " + code(head))
-    parts.extend(
-        [
-            "**Summary**",
-            "| Change | Count |\n|---|---:|\n"
-            + "\n".join(f"| {s} | {report['counts'][s]} |" for s in STATUSES),
-        ]
-    )
-    headline = "\n\n".join(parts)
+    counts = report["counts"]
+    total = sum(counts.values())
+    headline = [MARKER, "### Kubernetes Manifest Semantic Diff"]
     if report["errors"]:
-        parts.append("**Comparison incomplete.** Failed targets are excluded from the counts.")
-        parts.extend(
-            f"- {code(side)} / {code(name)} — {code(message)}"
-            for side, name, message in report["errors"]
+        headline.append("**Comparison incomplete.** Failed targets are excluded from the counts.")
+    if total or report["errors"]:
+        statuses = " · ".join(f"{counts[s]} {s.lower()}" for s in STATUSES)
+        headline.append(f"**{total} resource change{'s' if total != 1 else ''}** · {statuses}")
+    else:
+        headline.append("No semantic changes found in rendered resources.")
+    if head:
+        headline.append("Reviewed head " + code(head))
+    summary = "\n\n".join(headline)
+    notices = []
+    if report["errors"]:
+        notices.append(
+            "\n".join(
+                f"- {code(side)} / {code(name)} — {code(message)}"
+                for side, name, message in report["errors"]
+            )
         )
     if report["targets"]:
-        parts.append(
+        notices.append(
             "**Target inventory**\n\n"
             + "\n".join(f"- {status} {code(name)}" for name, status in report["targets"])
         )
-    total = sum(report["counts"].values())
-    if total:
-        parts.append(f"**Result** · {total} resource change{'s' if total != 1 else ''}.")
-    elif not report["errors"]:
-        parts.append("No semantic changes found in rendered resources.")
-    summary = "\n\n".join(parts)
-    if len(summary.encode()) > 45_000:
-        summary = (
-            headline
-            + f"\n\n{len(report['errors'])} errors and {len(report['targets'])} inventory changes. See the redacted artifact."
-        )
-    details = []
+    with_notices = "\n\n".join([summary, *notices])
+    if len(with_notices.encode()) <= 45_000:
+        summary = with_notices
+    else:
+        summary += f"\n\n{len(report['errors'])} errors and {len(report['targets'])} inventory changes. See the redacted artifact."
+    limit_note = "\n\nField details exceed the review limit. Narrow the target set for a detailed comparison."
+    if report["truncated"]:
+        return summary + limit_note
+    if not report["changes"]:
+        return summary
 
     def grouping(change):
         return tuple(change[k] for k in ("app", "env", "target"))
 
+    table = [
+        "| Application | Environment | Target | Resources | Changes to inspect |",
+        "|---|---|---|---:|---|",
+    ]
+    details = []
     for (app, env, target), items in groupby(sorted(report["changes"], key=grouping), grouping):
-        details.append(f"#### {code(app)} / {code(env)} · {code(target)}")
-        for change in items:
-            group, kind, ns, name = change["resource"]
-            ident = " / ".join(
-                code(s) for s in (kind + ("." + group if group else ""), ns or "(cluster)", name)
-            )
-            title = f"{change['status']} · {ident}"
-            rows = change["fields"]
-            security = group in ("rbac.authorization.k8s.io", "networking.k8s.io") and kind in (
-                "Role",
-                "ClusterRole",
-                "RoleBinding",
-                "ClusterRoleBinding",
-                "NetworkPolicy",
-            )
-            security = (
-                security or kind == "Secret" or any("securityContext" in row[0] for row in rows)
-            )
-            if security:
-                title += " · security-sensitive"
-            patch = resource_patch(change)
-            if patch:
-                details.append(f"<details open><summary>{title}</summary>\n\n{patch}\n\n</details>")
-            else:
-                details.append("- " + title)
-    full = "\n\n".join([summary, *details])
-    if len(full.encode()) > 60_000 or report["truncated"]:
-        return (
-            summary
-            + "\n\nField details exceed the review limit. Narrow the target set for a detailed comparison."
+        changes = list(items)
+        table.append(
+            f"| {code(app)} | {code(env)} | {code(target)} | {len(changes)} | {review_highlights(changes)} |"
         )
+        details.append(f"#### {code(app)} / {code(env)} · {code(target)}")
+        details.extend(resource_detail(change) for change in changes)
+    overview = summary + "\n\n" + "\n".join(table)
+    full = "\n\n".join([overview, *details])
+    if len(full.encode()) > 60_000:
+        return (
+            overview if len((overview + limit_note).encode()) <= 60_000 else summary
+        ) + limit_note
     return full

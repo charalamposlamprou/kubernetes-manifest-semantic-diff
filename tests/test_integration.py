@@ -57,6 +57,12 @@ def test_mixed_patch_and_values(pair, run):
         '"512Mi"',
     ]
     body = markdown(out)
+    overview, details = body.split("<details>", 1)
+    assert "2 resource changes" in overview
+    assert "Replicas <code>3</code> → <code>4</code>" in overview
+    assert "Container image" in overview and "Resource requests/limits" in overview
+    assert "| <code>spec.replicas</code> | <code>3</code> | <code>4</code> |" in details
+    assert "<details open>" not in body
     assert "--- a/rendered/backend-production/production/Deployment.apps/backend.yaml" in body
     assert "+++ b/rendered/payments-production/production/Deployment.apps/payments.yaml" in body
     assert "\n-  replicas: 3\n+  replicas: 4\n" in body

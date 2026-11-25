@@ -139,7 +139,7 @@ def test_large_summary_retains_counts():
         "truncated": True,
     }
     comment = markdown(result, "a" * 40)
-    assert "| Added | 5 |" in comment and len(comment.encode()) < 60_000
+    assert "5 added" in comment and len(comment.encode()) < 60_000
 
 
 def test_shape_changes_are_safe():
