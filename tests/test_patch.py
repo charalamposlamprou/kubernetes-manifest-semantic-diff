@@ -61,6 +61,38 @@ def test_patch_fence_and_schema():
             validate(report)
 
 
+@pytest.mark.parametrize(
+    "field",
+    [
+        "spec.template.spec.containers[api].envFrom[0].configMapRef.name",
+        "spec.template.spec.initContainers[init].env[MODE].valueFrom.configMapKeyRef.name",
+        "spec.template.spec.volumes[settings].configMap.name",
+    ],
+)
+def test_configmap_switch_needs_both_maps_and_a_matching_deployment_reference(field):
+    from manifest_diff.report import review_highlights
+
+    old = {"status": "Removed", "resource": ["", "ConfigMap", "prod", "old"], "fields": []}
+    new = {"status": "Added", "resource": ["", "ConfigMap", "prod", "new"], "fields": []}
+    dep = {
+        "status": "Modified",
+        "resource": ["apps", "Deployment", "prod", "api"],
+        "fields": [[field, '"old"', '"new"']],
+    }
+    expected = "Deployment <code>api</code> switches to a new ConfigMap"
+    assert review_highlights([new, dep, old]) == expected
+    extra = {**new, "resource": ["", "ConfigMap", "prod", "unrelated"]}
+    assert "<code>ConfigMap</code> added" in review_highlights([old, new, dep, extra])
+    for mismatched in [
+        [new, dep],
+        [old, dep],
+        [old, new, {**dep, "resource": ["apps", "Deployment", "dev", "api"]}],
+        [old, new, {**dep, "fields": [[field, "[redacted]", '"new"']]}],
+        [old, new, {**dep, "fields": [["metadata.annotations." + field, '"old"', '"new"']]}],
+    ]:
+        assert "switches to a new ConfigMap" not in review_highlights(mismatched)
+
+
 def test_same_memory_value_stays_with_its_yaml_parent():
     def resources(limit_cpu, limit_memory, request_cpu, request_memory):
         return {
