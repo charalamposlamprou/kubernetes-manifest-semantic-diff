@@ -145,23 +145,25 @@ Only the versioned redacted JSON envelope is uploaded, with one-day retention. T
 
 ## Example review
 
-Applying `examples/review.patch` produces the following review. The file headers identify normalized render outputs for each target and resource. GitHub highlights additions and removals inside each expanded section. Hunk line numbers refer to the normalized YAML. Large resources can fall back to a field-only diff, and protected rotations identify the changed field.
+Applying `examples/review.patch` produces the review below. Scan the overview to find the application and environment you own. Expand a resource for its before/after values and its rendered diff. “Absent” means the field was omitted from that revision.
 
 ### Kubernetes Manifest Semantic Diff
 
-**Summary**
+**2 resource changes** · 0 added · 2 modified · 0 removed
 
-| Change | Count |
-|---|---:|
-| Added | 0 |
-| Modified | 2 |
-| Removed | 0 |
-
-**Result** · 2 resource changes.
+| Application | Environment | Target | Resources | Changes to inspect |
+|---|---|---|---:|---|
+| <code>backend</code> | <code>production</code> | <code>backend-production</code> | 1 | Replicas <code>3</code> → <code>4</code> · Container image |
+| <code>payments</code> | <code>production</code> | <code>payments-production</code> | 1 | Resource requests/limits |
 
 #### <code>backend</code> / <code>production</code> · <code>backend-production</code>
 
-<details open><summary>Modified · <code>Deployment.apps</code> / <code>production</code> / <code>backend</code></summary>
+<details><summary>Modified · <code>Deployment.apps</code> / <code>production</code> / <code>backend</code></summary>
+
+| Field | Before | After |
+|---|---|---|
+| <code>spec.replicas</code> | <code>3</code> | <code>4</code> |
+| <code>spec.template.spec.containers&#91;backend&#93;.image</code> | <code>&#34;ghcr.io/example/backend&#58;1.0.0&#34;</code> | <code>&#34;ghcr.io/example/backend&#58;1.1.0&#34;</code> |
 
 ```diff
 --- a/rendered/backend-production/production/Deployment.apps/backend.yaml
@@ -186,13 +188,15 @@ Applying `examples/review.patch` produces the following review. The file headers
          - containerPort: 8080
 ```
 
-Field paths · <code>spec.replicas</code>, <code>spec.template.spec.containers&#91;backend&#93;.image</code>
-
 </details>
 
 #### <code>payments</code> / <code>production</code> · <code>payments-production</code>
 
-<details open><summary>Modified · <code>Deployment.apps</code> / <code>production</code> / <code>payments</code></summary>
+<details><summary>Modified · <code>Deployment.apps</code> / <code>production</code> / <code>payments</code></summary>
+
+| Field | Before | After |
+|---|---|---|
+| <code>spec.template.spec.containers&#91;payments&#93;.resources.requests.cpu</code> | <code>&#34;100m&#34;</code> | <code>&#34;250m&#34;</code> |
 
 ```diff
 --- a/rendered/payments-production/production/Deployment.apps/payments.yaml
@@ -206,11 +210,9 @@ Field paths · <code>spec.replicas</code>, <code>spec.template.spec.containers&#
              memory: 128Mi
 ```
 
-Field paths · <code>spec.template.spec.containers&#91;payments&#93;.resources.requests.cpu</code>
-
 </details>
 
-An unchanged render says **No semantic changes found in rendered resources.** Oversized output falls back to counts and a notice. RBAC, Secret, NetworkPolicy and security-context changes carry a security-sensitive label. Review the field changes to determine whether access expanded or contracted.
+Failed targets appear above the overview and are excluded from resource counts. Protected fields stay redacted. When details exceed the comment limit, the overview is kept if it fits. Truncated artifacts show totals and a limit notice.
 
 ## Development and validation
 

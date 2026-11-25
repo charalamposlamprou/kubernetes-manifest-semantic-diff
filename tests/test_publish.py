@@ -163,7 +163,9 @@ def test_markdown_and_size():
     result = markdown(report)
     assert (
         "security-sensitive" in result
-        and "<details open>" in result
+        and "<details><summary>" in result
+        and "<details open>" not in result
+        and "| Field | Before | After |" in result
         and "<img" not in result
         and "@everyone" not in result
     )
